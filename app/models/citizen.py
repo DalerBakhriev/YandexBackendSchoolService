@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 from datetime import date
 
 
@@ -16,20 +16,24 @@ class Citizen(BaseModel):
     relatives: List[int] = []
 
 
+class CitizenInResponse(BaseModel):
+    data: Citizen
+
+
 class CitizenToUpdate(BaseModel):
 
-    town: str = None
-    street: str = None
-    building: str = None
-    apartment: str = None
-    name: str = None
-    birth_date: date = None
-    gender: str = None
-    relatives: List[int] = None
+    town: Optional[str] = None
+    street: Optional[str] = None
+    building: Optional[str] = None
+    apartment: Optional[str] = None
+    name: Optional[str] = None
+    birth_date: Optional[date] = None
+    gender: Optional[str] = None
+    relatives: Optional[List[int]] = None
 
 
 class SomeCitizensInResponse(BaseModel):
-    citizens: List[Citizen]
+    data: List[Citizen]
 
 
 class AgeStatsByTown(BaseModel):
@@ -38,4 +42,8 @@ class AgeStatsByTown(BaseModel):
     p50: int
     p75: int
     p99: int
+
+
+class AgeStatsByTownInResponse(BaseModel):
+    data: List[AgeStatsByTown]
 

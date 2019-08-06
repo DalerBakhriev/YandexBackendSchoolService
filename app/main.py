@@ -1,15 +1,25 @@
 from typing import List
-import pandas as pd
-import numpy as np
+
 from fastapi import FastAPI, Body, Depends, Path
 from fastapi.encoders import jsonable_encoder
-from starlette.status import HTTP_201_CREATED, HTTP_200_OK, HTTP_400_BAD_REQUEST
 from starlette.responses import JSONResponse, PlainTextResponse
+from starlette.status import HTTP_201_CREATED, HTTP_200_OK, HTTP_400_BAD_REQUEST
 
-from app.crud.citizen import get_citizens_data, insert_citizens_data, get_citizens_age_and_town
+from app.crud.citizen import (
+    get_citizens_data,
+    insert_citizens_data,
+    get_citizens_age_and_town,
+    update_citizens_data
+)
 from app.db.database import get_database, DataBase
 from app.db.db_utils import connect_to_postgres, close_postgres_connection
-from app.models.citizen import Citizen, SomeCitizensInResponse, CitizenToUpdate, AgeStatsByTown
+from app.models.citizen import (
+    AgeStatsByTownInResponse,
+    Citizen,
+    CitizenInResponse,
+    CitizenToUpdate,
+    SomeCitizensInResponse
+)
 
 app = FastAPI()
 app.add_event_handler("startup", connect_to_postgres)
@@ -29,13 +39,13 @@ async def import_citizens_data(
             if citizen_id not in citizens_relatives[relative_id]:
                 return PlainTextResponse("Relatives data is inconsistent", status_code=HTTP_400_BAD_REQUEST)
 
-    with db.pool.acquire() as conn:
+    async with db.pool.acquire() as conn:
         gen_import_id = await insert_citizens_data(conn=conn, citizens=citizens)
 
         return JSONResponse(jsonable_encoder({"data": gen_import_id}), status_code=HTTP_201_CREATED)
 
 
-@app.patch("/imports/{import_id}/citizens/{citizen_id}")
+@app.patch("/imports/{import_id}/citizens/{citizen_id}", response_model=Citizen)
 async def patch_citizens_data(
         *,
         import_id: int = Path(..., title="The ID of import to get"),
@@ -44,7 +54,16 @@ async def patch_citizens_data(
         db: DataBase = Depends(get_database)
 ):
     async with db.pool.acquire() as conn:
-        pass
+        updated_citizen: Citizen = await update_citizens_data(
+            conn=conn,
+            import_id=import_id,
+            citizen_id=citizen_id,
+            citizen=citizen
+        )
+
+        updated_citizen_for_response = CitizenInResponse(data=updated_citizen)
+        return JSONResponse(jsonable_encoder(updated_citizen_for_response),
+                            status_code=HTTP_200_OK)
 
 
 @app.get("/imports/{import_id}/citizens", response_model=SomeCitizensInResponse)
@@ -57,7 +76,7 @@ async def get_citizens(
         citizens = await get_citizens_data(conn=conn, import_id=import_id)
 
         return JSONResponse(
-            jsonable_encoder(SomeCitizensInResponse(citizens=citizens)),
+            jsonable_encoder(SomeCitizensInResponse(data=citizens)),
             status_code=HTTP_200_OK
         )
 
@@ -71,36 +90,15 @@ async def get_citizens_and_num_presents(
         pass
 
 
-@app.get("/imports/{import_id}/towns/stat/percentile/age", response_model=List[AgeStatsByTown])
+@app.get("/imports/{import_id}/towns/stat/percentile/age", response_model=AgeStatsByTownInResponse)
 async def get_citizens_age_stats(
         import_id: int = Path(...),
         db: DataBase = Depends(get_database)
 ):
     async with db.pool.acquire() as conn:
-        citizens_age_town = await get_citizens_age_and_town(conn=conn, import_id=import_id)
-        age_percentiles = (
-            citizens_age_town
-                .groupby("town")
-                .agg({"age": [lambda x: np.percentile(x, q=50, interpolation="linear"),
-                              lambda x: np.percentile(x, q=75, interpolation="linear"),
-                              lambda x: np.percentile(x, q=99, interpolation="linear")
-                              ]
-                      })
-                .rename(columns={"<lambda_0>": "p50", "<lambda_1>": "p75", "<lambda_2>": "p99"})["age"]
-                .reset_index()
-        )
+        age_stats_by_town = await get_citizens_age_and_town(conn=conn, import_id=import_id)
+        age_stats_by_town_for_response = AgeStatsByTownInResponse(data=age_stats_by_town)
 
-        age_stats_by_town: List[AgeStatsByTown] = []
-        for row in age_percentiles.itertuples(index=False):
-            age_stats_by_town.append(
-                AgeStatsByTown(
-                    town=getattr(row, "town"),
-                    p50=getattr(row, "p50"),
-                    p75=getattr(row, "p75"),
-                    p99=getattr(row, "p99")
-                )
-            )
-
-        # TODO: Make "data" header for json data
-        return JSONResponse(jsonable_encoder(age_stats_by_town), status_code=HTTP_200_OK)
+        return JSONResponse(jsonable_encoder(age_stats_by_town_for_response),
+                            status_code=HTTP_200_OK)
 
