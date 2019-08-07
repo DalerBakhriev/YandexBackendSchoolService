@@ -1,6 +1,7 @@
-from pydantic import BaseModel
-from typing import List, Optional, Tuple
 from datetime import date
+from typing import List, Optional
+
+from pydantic import BaseModel
 
 
 class Citizen(BaseModel):
@@ -46,4 +47,6 @@ class AgeStatsByTown(BaseModel):
 
 class AgeStatsByTownInResponse(BaseModel):
     data: List[AgeStatsByTown]
+
+
 

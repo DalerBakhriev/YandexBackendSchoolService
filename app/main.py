@@ -9,7 +9,8 @@ from app.crud.citizen import (
     get_citizens_data,
     insert_citizens_data,
     get_citizens_age_and_town,
-    update_citizens_data
+    update_citizens_data,
+    get_num_presents_by_citizen_per_month
 )
 from app.db.database import get_database, DataBase
 from app.db.db_utils import connect_to_postgres, close_postgres_connection
@@ -54,6 +55,7 @@ async def patch_citizens_data(
         db: DataBase = Depends(get_database)
 ):
     async with db.pool.acquire() as conn:
+        # TODO: Валидация на существующие citizen_id в списке родственников
         updated_citizen: Citizen = await update_citizens_data(
             conn=conn,
             import_id=import_id,
@@ -87,7 +89,13 @@ async def get_citizens_and_num_presents(
         db: DataBase = Depends(get_database)
 ):
     async with db.pool.acquire() as conn:
-        pass
+        num_presents_by_citizen_per_month = await get_num_presents_by_citizen_per_month(
+            conn=conn,
+            import_id=import_id
+        )
+
+        return JSONResponse(jsonable_encoder({"data": num_presents_by_citizen_per_month}),
+                            status_code=HTTP_200_OK)
 
 
 @app.get("/imports/{import_id}/towns/stat/percentile/age", response_model=AgeStatsByTownInResponse)

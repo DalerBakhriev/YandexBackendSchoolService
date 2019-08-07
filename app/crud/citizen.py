@@ -1,8 +1,10 @@
-from typing import List
 from collections import defaultdict
-from app.models.citizen import AgeStatsByTown, Citizen, CitizenToUpdate
-from asyncpg import Connection
+from typing import Dict, List
+
 import numpy as np
+from asyncpg import Connection
+
+from app.models.citizen import AgeStatsByTown, Citizen, CitizenToUpdate
 
 
 async def insert_citizens_data(conn: Connection, citizens: List[Citizen]) -> int:
@@ -104,56 +106,59 @@ async def update_citizens_data(
     citizen_from_db.birth_date = citizen.birth_date if citizen.birth_date else citizen_from_db.birth_date
     citizen_from_db.gender = citizen.gender if citizen.gender else citizen_from_db.gender
 
-    _ = await conn.fetchrow(
-        """
-        UPDATE public.citizens
-        SET town = $1,
-            street = $2,
-            building = $3,
-            apartment = $4,
-            name = $5,
-            birth_date = $6,
-            gender = $7
-        WHERE import_id = $8 AND citizen_id = $9
-        """,
-        citizen_from_db.town,
-        citizen_from_db.street,
-        citizen_from_db.building,
-        citizen_from_db.apartment,
-        citizen_from_db.name,
-        citizen_from_db.birth_date,
-        citizen_from_db.gender
-    )
+    async with conn.transaction():
 
-    # Обновление информации о родственниках
-    if citizen.relatives is not None:
         await conn.execute(
             """
-            DELETE
-            FROM public.relatives
-            WHERE import_id = $1 AND citizen_id = $2
+            UPDATE public.citizens
+            SET town = $1,
+                street = $2,
+                building = $3,
+                apartment = $4,
+                name = $5,
+                birth_date = $6,
+                gender = $7
+            WHERE import_id = $8 AND citizen_id = $9
             """,
-            import_id,
-            citizen_id
+            citizen_from_db.town,
+            citizen_from_db.street,
+            citizen_from_db.building,
+            citizen_from_db.apartment,
+            citizen_from_db.name,
+            citizen_from_db.birth_date,
+            citizen_from_db.gender
         )
 
-        if citizen.relatives:
-            update_for_relatives = []
-
-            for relative_id in citizen.relatives:
-                update_for_relatives.extend(
-                    [(import_id, citizen_id, relative_id),
-                     (import_id, relative_id, citizen_id)]
-                )
-            _ = await conn.copy_records_to_table(
-                table_name="relatives",
-                records=update_for_relatives,
-                columns=["import_id", "citizen_id", "relative_id"],
-                schema_name="public"
+        # Обновление информации о родственниках
+        if citizen.relatives is not None:
+            await conn.execute(
+                """
+                DELETE
+                FROM public.relatives
+                WHERE import_id = $1 AND citizen_id = $2
+                """,
+                import_id,
+                citizen_id
             )
-        citizen_from_db.relatives = citizen.relatives
 
-    return citizen_from_db
+            if citizen.relatives:
+                update_for_relatives = []
+
+                for relative_id in citizen.relatives:
+                    update_for_relatives.extend(
+                        [(import_id, citizen_id, relative_id),
+                         (import_id, relative_id, citizen_id)]
+                    )
+                _ = await conn.copy_records_to_table(
+                    table_name="relatives",
+                    records=update_for_relatives,
+                    columns=["import_id", "citizen_id", "relative_id"],
+                    schema_name="public"
+                )
+
+            citizen_from_db.relatives = citizen.relatives
+
+        return citizen_from_db
 
 
 async def get_citizens_data(conn: Connection, import_id: int) -> List[Citizen]:
@@ -178,7 +183,7 @@ async def get_citizens_data(conn: Connection, import_id: int) -> List[Citizen]:
                gender,
                array_agg(relative_id) relatives
         FROM public.citizens citizens JOIN public.relatives relatives_
-        ON  citizens.import_id = relatives_.import_id AND citizens.citizen_id = relatives_.citizen_id
+        ON citizens.import_id = relatives_.import_id AND citizens.citizen_id = relatives_.citizen_id
         WHERE citizens.import_id = $1
         GROUP BY (citizen_id, town, street, building, apartment, name, birth_date, gender)
         """,
@@ -188,6 +193,42 @@ async def get_citizens_data(conn: Connection, import_id: int) -> List[Citizen]:
         citizens.append(Citizen(**citizen_row))
 
     return citizens
+
+
+async def get_num_presents_by_citizen_per_month(conn: Connection, import_id: int) -> Dict[int, List[Dict[int, int]]]:
+    """
+    Вовзарщает жителей и количество подарков, которые они должны покупать помесячно
+    :param conn: asyncpg connection
+    :param import_id: id of upload from provider
+    :return: number of presents for every user per month
+    """
+
+    num_presents_by_citizen_per_month_rows = await conn.fetch(
+        """
+        SELECT citizen_id, month, COUNT(DISTINCT relative_id) num_birthdays
+        FROM
+        (SELECT citizen_id AS relative_id,
+                relative_id AS citizen_id,
+                EXTRACT(MONTH from birth_date)::integer AS month
+        FROM public.citizens citizens LEFT JOIN public.relatives relatives
+        ON citizens.citizen_id = relatives.citizen_id AND citizens.import_id = relatives.import_id
+        WHERE import_id = $1)
+        WHERE citizen_id is NOT NULL
+        GROUP BY citizen_id, month
+        """,
+        import_id
+    )
+
+    num_presents_by_citizen_per_month = defaultdict(list)
+    for row in num_presents_by_citizen_per_month_rows:
+        num_presents_by_citizen_per_month[row["month"]].append({row["citizen_id"]: row["num_birthdays"]})
+
+    num_presents_by_citizen_per_month = dict(num_presents_by_citizen_per_month)
+    for month_num in range(1, 12 + 1):
+        if month_num not in num_presents_by_citizen_per_month:
+            num_presents_by_citizen_per_month[month_num] = []
+
+    return num_presents_by_citizen_per_month
 
 
 async def get_citizens_age_and_town(conn: Connection, import_id: int) -> List[AgeStatsByTown]:
