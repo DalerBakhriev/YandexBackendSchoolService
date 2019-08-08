@@ -47,6 +47,3 @@ class AgeStatsByTown(BaseModel):
 
 class AgeStatsByTownInResponse(BaseModel):
     data: List[AgeStatsByTown]
-
-
-

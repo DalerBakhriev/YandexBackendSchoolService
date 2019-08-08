@@ -43,19 +43,29 @@ async def import_citizens_data(
     async with db.pool.acquire() as conn:
         gen_import_id = await insert_citizens_data(conn=conn, citizens=citizens)
 
-        return JSONResponse(jsonable_encoder({"data": gen_import_id}), status_code=HTTP_201_CREATED)
+        return JSONResponse(jsonable_encoder({"data": gen_import_id}),
+                            status_code=HTTP_201_CREATED)
 
 
 @app.patch("/imports/{import_id}/citizens/{citizen_id}", response_model=Citizen)
 async def patch_citizens_data(
         *,
-        import_id: int = Path(..., title="The ID of import to get"),
+        import_id: int = Path(..., title="The ID of import to get", ge=1),
         citizen_id: int = Path(..., title="Citizen id to patch info"),
         citizen: CitizenToUpdate = Body(..., title="Citizen's data to update"),
         db: DataBase = Depends(get_database)
 ):
+    # Валидируем, что хотя бы один параметр не пустой
+    num_parameters_to_update = sum([
+        param_value is not None
+        for param_value in citizen.__dict__.values()
+    ])
+    if num_parameters_to_update == 0:
+        return PlainTextResponse("There are no parameters to update",
+                                 status_code=HTTP_400_BAD_REQUEST)
+    # TODO: Валидация на существующие citizen_id в списке родственников
     async with db.pool.acquire() as conn:
-        # TODO: Валидация на существующие citizen_id в списке родственников
+
         updated_citizen: Citizen = await update_citizens_data(
             conn=conn,
             import_id=import_id,
@@ -71,7 +81,7 @@ async def patch_citizens_data(
 @app.get("/imports/{import_id}/citizens", response_model=SomeCitizensInResponse)
 async def get_citizens(
         *,
-        import_id: int = Path(..., title="The ID of import to get"),
+        import_id: int = Path(..., title="The ID of import to get", ge=1),
         db: DataBase = Depends(get_database)
 ):
     async with db.pool.acquire() as conn:
@@ -85,7 +95,7 @@ async def get_citizens(
 
 @app.get("/imports/{import_id}/citizens/birthdays")
 async def get_citizens_and_num_presents(
-        import_id: int = Path(..., title="The ID of import to get"),
+        import_id: int = Path(..., title="The ID of import to get", ge=1),
         db: DataBase = Depends(get_database)
 ):
     async with db.pool.acquire() as conn:
@@ -100,7 +110,7 @@ async def get_citizens_and_num_presents(
 
 @app.get("/imports/{import_id}/towns/stat/percentile/age", response_model=AgeStatsByTownInResponse)
 async def get_citizens_age_stats(
-        import_id: int = Path(...),
+        import_id: int = Path(..., title="The ID of import to get", ge=1),
         db: DataBase = Depends(get_database)
 ):
     async with db.pool.acquire() as conn:

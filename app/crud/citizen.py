@@ -65,7 +65,7 @@ async def get_citizen(conn: Connection, import_id: int, citizen_id: int) -> Citi
                birth_date,
                gender,
                array_agg(relative_id) relatives
-        FROM public.citizens citizens JOIN public.relatives relatives_
+        FROM public.citizens citizens LEFT JOIN public.relatives relatives_
         ON citizens.import_id = relatives_.import_id AND citizens.citizen_id = relatives_.citizen_id
         WHERE citizens.import_id = $1 AND citizens.citizen_id = $2
         """,
@@ -126,7 +126,9 @@ async def update_citizens_data(
             citizen_from_db.apartment,
             citizen_from_db.name,
             citizen_from_db.birth_date,
-            citizen_from_db.gender
+            citizen_from_db.gender,
+            import_id,
+            citizen_id
         )
 
         # Обновление информации о родственниках
@@ -182,7 +184,7 @@ async def get_citizens_data(conn: Connection, import_id: int) -> List[Citizen]:
                birth_date,
                gender,
                array_agg(relative_id) relatives
-        FROM public.citizens citizens JOIN public.relatives relatives_
+        FROM public.citizens citizens LEFT JOIN public.relatives relatives_
         ON citizens.import_id = relatives_.import_id AND citizens.citizen_id = relatives_.citizen_id
         WHERE citizens.import_id = $1
         GROUP BY (citizen_id, town, street, building, apartment, name, birth_date, gender)
