@@ -7,7 +7,7 @@ from .database import db
 
 
 async def connect_to_postgres():
-    logging.info("Connecting to database")
+    logging.info(f"Connecting to database with url: {DATABASE_URL}")
 
     db.pool = await asyncpg.create_pool(
         str(DATABASE_URL),

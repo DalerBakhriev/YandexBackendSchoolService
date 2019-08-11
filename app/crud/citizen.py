@@ -1,9 +1,11 @@
 from collections import defaultdict
+from datetime import datetime
 from typing import Dict, List
 
 import numpy as np
 from asyncpg import Connection
 
+from app.core.custom_exceptions import WrongDateFormatException
 from app.models.citizen import AgeStatsByTown, Citizen, CitizenToUpdate
 
 
@@ -18,11 +20,16 @@ async def insert_citizens_data(conn: Connection, citizens: List[Citizen]) -> int
     async with conn.transaction():
 
         generated_import_id = await conn.fetchval("SELECT nextval('imports_seq')")
-        citizens_records = [
-            (generated_import_id, citizen.citizen_id, citizen.town, citizen.street, citizen.building,
-             citizen.apartment, citizen.name, citizen.birth_date, citizen.gender)
-            for citizen in citizens
-        ]
+        try:
+            citizens_records = [
+                (generated_import_id, citizen.citizen_id, citizen.town, citizen.street, citizen.building,
+                 citizen.apartment, citizen.name,
+                 datetime.strptime(citizen.birth_date, "%d.%m.%Y"),
+                 citizen.gender)
+                for citizen in citizens
+            ]
+        except ValueError:
+            raise WrongDateFormatException("Date does not exist")
 
         _ = await conn.copy_records_to_table(
             table_name="citizens",
@@ -34,8 +41,8 @@ async def insert_citizens_data(conn: Connection, citizens: List[Citizen]) -> int
 
         citizen_relatives = []
         for citizen in citizens:
-            for relative in citizen.relatives:
-                citizen_relatives.append((generated_import_id, citizen, relative))
+            for relative_id in citizen.relatives:
+                citizen_relatives.append((generated_import_id, citizen.citizen_id, relative_id))
 
         _ = await conn.copy_records_to_table(
             table_name="relatives",
@@ -68,11 +75,23 @@ async def get_citizen(conn: Connection, import_id: int, citizen_id: int) -> Citi
         FROM public.citizens citizens LEFT JOIN public.relatives relatives_
         ON citizens.import_id = relatives_.import_id AND citizens.citizen_id = relatives_.citizen_id
         WHERE citizens.import_id = $1 AND citizens.citizen_id = $2
+        GROUP BY town, street, building, apartment, name, birth_date, gender
         """,
         import_id,
         citizen_id
     )
-    citizen = Citizen(**citizen_row)
+
+    citizen = Citizen(
+        citizen_id=citizen_id,
+        town=citizen_row["town"],
+        street=citizen_row["street"],
+        building=citizen_row["building"],
+        apartment=citizen_row["apartment"],
+        name=citizen_row["name"],
+        birth_date=citizen_row["birth_date"].strftime("%d.%m.%Y"),
+        gender=citizen_row["gender"],
+        relatives=citizen_row["relatives"] if citizen_row["relatives"][0] is not None else []
+    )
 
     return citizen
 
@@ -103,8 +122,16 @@ async def update_citizens_data(
     citizen_from_db.building = citizen.building if citizen.building else citizen_from_db.building
     citizen_from_db.apartment = citizen.apartment if citizen.apartment else citizen_from_db.apartment
     citizen_from_db.name = citizen.name if citizen.name else citizen_from_db.name
-    citizen_from_db.birth_date = citizen.birth_date if citizen.birth_date else citizen_from_db.birth_date
     citizen_from_db.gender = citizen.gender if citizen.gender else citizen_from_db.gender
+
+    try:
+        citizen_from_db.birth_date = datetime.strptime(
+            citizen.birth_date,
+            "%d.%m.%Y"
+        ) if citizen.birth_date else datetime.strptime(citizen_from_db.birth_date, "%d.%m.%Y")
+    except ValueError:
+        raise WrongDateFormatException("Date does not exist")
+    print(citizen_from_db.birth_date)
 
     async with conn.transaction():
 
@@ -137,7 +164,9 @@ async def update_citizens_data(
                 """
                 DELETE
                 FROM public.relatives
-                WHERE import_id = $1 AND citizen_id = $2
+                WHERE (import_id = $1 AND citizen_id = $2)
+                      OR
+                      (import_id = $1 AND relative_id = $2)
                 """,
                 import_id,
                 citizen_id
@@ -159,6 +188,8 @@ async def update_citizens_data(
                 )
 
             citizen_from_db.relatives = citizen.relatives
+        citizen_from_db.birth_date = citizen_from_db.birth_date.strftime("%d.%m.%Y")
+        print(citizen_from_db.birth_date)
 
         return citizen_from_db
 
@@ -175,7 +206,7 @@ async def get_citizens_data(conn: Connection, import_id: int) -> List[Citizen]:
     citizens: List[Citizen] = []
     citizens_rows = await conn.fetch(
         """
-        SELECT citizen_id,
+        SELECT citizens.citizen_id AS citizen_id_,
                town,
                street,
                building,
@@ -187,12 +218,22 @@ async def get_citizens_data(conn: Connection, import_id: int) -> List[Citizen]:
         FROM public.citizens citizens LEFT JOIN public.relatives relatives_
         ON citizens.import_id = relatives_.import_id AND citizens.citizen_id = relatives_.citizen_id
         WHERE citizens.import_id = $1
-        GROUP BY (citizen_id, town, street, building, apartment, name, birth_date, gender)
+        GROUP BY (citizens.citizen_id, town, street, building, apartment, name, birth_date, gender)
         """,
         import_id
     )
     for citizen_row in citizens_rows:
-        citizens.append(Citizen(**citizen_row))
+        citizens.append(Citizen(
+            citizen_id=citizen_row["citizen_id_"],
+            town=citizen_row["town"],
+            street=citizen_row["street"],
+            building=citizen_row["building"],
+            apartment=citizen_row["apartment"],
+            name=citizen_row["name"],
+            birth_date=citizen_row["birth_date"].strftime("%d.%m.%Y"),
+            gender=citizen_row["gender"],
+            relatives=citizen_row["relatives"] if citizen_row["relatives"][0] is not None else []
+    ))
 
     return citizens
 
@@ -207,23 +248,23 @@ async def get_num_presents_by_citizen_per_month(conn: Connection, import_id: int
 
     num_presents_by_citizen_per_month_rows = await conn.fetch(
         """
-        SELECT citizen_id, month, COUNT(DISTINCT relative_id) num_birthdays
+        SELECT citizen_id_, month, COUNT(DISTINCT relative_id) num_birthdays
         FROM
-        (SELECT citizen_id AS relative_id,
-                relative_id AS citizen_id,
-                EXTRACT(MONTH from birth_date)::integer AS month
-        FROM public.citizens citizens LEFT JOIN public.relatives relatives
-        ON citizens.citizen_id = relatives.citizen_id AND citizens.import_id = relatives.import_id
-        WHERE import_id = $1)
-        WHERE citizen_id is NOT NULL
-        GROUP BY citizen_id, month
+            (SELECT citizens.citizen_id AS relative_id,
+                    relatives.relative_id AS citizen_id_,
+                    EXTRACT(MONTH from birth_date)::integer AS month
+            FROM public.citizens citizens LEFT JOIN public.relatives relatives
+            ON citizens.citizen_id = relatives.citizen_id AND citizens.import_id = relatives.import_id
+            WHERE citizens.import_id = $1) subquery
+        WHERE citizen_id_ is NOT NULL
+        GROUP BY citizen_id_, month
         """,
         import_id
     )
 
     num_presents_by_citizen_per_month = defaultdict(list)
     for row in num_presents_by_citizen_per_month_rows:
-        num_presents_by_citizen_per_month[row["month"]].append({row["citizen_id"]: row["num_birthdays"]})
+        num_presents_by_citizen_per_month[row["month"]].append({row["citizen_id_"]: row["num_birthdays"]})
 
     num_presents_by_citizen_per_month = dict(num_presents_by_citizen_per_month)
     for month_num in range(1, 12 + 1):
@@ -244,7 +285,7 @@ async def get_citizens_age_and_town(conn: Connection, import_id: int) -> List[Ag
 
     citizens_age_and_town = await conn.fetch(
         """
-        SELECT age(birth_date) age, town
+        SELECT age(birth_date)::varchar age, town
         FROM public.citizens
         WHERE import_id = $1
         """,
@@ -252,6 +293,7 @@ async def get_citizens_age_and_town(conn: Connection, import_id: int) -> List[Ag
     )
     ages_by_town = defaultdict(list)
     for age_as_string, town in citizens_age_and_town:
+        print(age_as_string, type(age_as_string))
         ages_by_town[town].append(int(age_as_string.split(" ")[0]))
 
     age_stats_by_town: List[AgeStatsByTown] = []

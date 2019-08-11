@@ -1,19 +1,34 @@
-version: '3'
+version: '3.7'
+
 services:
-  python:
+  db:
+    image: postgres:10.1-alpine
+    build:
+      context: db_init
+      dockerfile: Dockerfile
+    volumes:
+      - postgres_data:/var/lib/postgresql/data/
+    env_file:
+      - .env
+    container_name:
+      db
+    ports:
+      - 5433:5432
+    restart: always
+  web:
     build:
       context: .
       dockerfile: Dockerfile
-    volumes:
-      - ./:/home/jovyan/
+    env_file:
+      - .env
+    container_name:
+      yaback_service
     ports:
-      - "8888:8888"
-  db:
-    image: postgres
+      - 8080:8080
+    tty: true
+    depends_on:
+      - db
     restart: always
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-    ports:
-      - "5000:5432"
+
 volumes:
-  pgdata:
+  postgres_data:
