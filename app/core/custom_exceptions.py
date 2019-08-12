@@ -1,2 +1,0 @@
-class WrongDateFormatException(ValueError):
-    pass

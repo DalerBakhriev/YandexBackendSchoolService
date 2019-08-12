@@ -1,16 +1,11 @@
 import os
 
 from databases import DatabaseURL
-from dotenv import load_dotenv
-
-load_dotenv(".env")
 
 DATABASE_URL = os.getenv("DATABASE_URL", "")  # deploying without docker-compose
 if not DATABASE_URL:
     POSTGRES_HOST = os.getenv("POSTGRES_HOST", "localhost")
-    if POSTGRES_HOST == "0.0.0.0":
-        POSTGRES_HOST = "localhost"
-    POSTGRES_PORT = int(os.getenv("POSTGRES_PORT", 5433))
+    POSTGRES_PORT = int(os.getenv("POSTGRES_PORT", 5432))
     POSTGRES_USER = os.getenv("POSTGRES_USER", "daler")
     POSTGRES_PASS = os.getenv("POSTGRES_PASSWORD", "daler")
     POSTGRES_NAME = os.getenv("POSTGRES_DB", "citizens_db")

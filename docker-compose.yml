@@ -10,10 +10,9 @@ services:
       - postgres_data:/var/lib/postgresql/data/
     env_file:
       - .env
-    container_name:
-      db
+    container_name: db
     ports:
-      - 5433:5432
+      - 5432:5432
     restart: always
   web:
     build:

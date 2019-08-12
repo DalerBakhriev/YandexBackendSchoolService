@@ -16,7 +16,8 @@ CREATE TABLE IF NOT EXISTS public.relatives (
       citizen_id int8 NOT NULL,
       relative_id int8 NOT NULL,
       CONSTRAINT import_citizen_fkey FOREIGN KEY (import_id, citizen_id) REFERENCES public.citizens(import_id, citizen_id),
-      CONSTRAINT import_relative_fkey FOREIGN KEY (import_id, relative_id) REFERENCES public.citizens(import_id, citizen_id)
+      CONSTRAINT import_relative_fkey FOREIGN KEY (import_id, relative_id) REFERENCES public.citizens(import_id, citizen_id),
+      CONSTRAINT import_citizen_relative_pkey PRIMARY KEY (import_id, citizen_id, relative_id)
       );
 
 CREATE SEQUENCE IF NOT EXISTS imports_seq START 1;

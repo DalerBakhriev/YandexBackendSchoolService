@@ -4,8 +4,10 @@ from typing import Dict, List
 
 import numpy as np
 from asyncpg import Connection
+from asyncpg.exceptions import ForeignKeyViolationError, UniqueViolationError
+from starlette.exceptions import HTTPException
+from starlette.status import HTTP_400_BAD_REQUEST
 
-from app.core.custom_exceptions import WrongDateFormatException
 from app.models.citizen import AgeStatsByTown, Citizen, CitizenToUpdate
 
 
@@ -20,36 +22,44 @@ async def insert_citizens_data(conn: Connection, citizens: List[Citizen]) -> int
     async with conn.transaction():
 
         generated_import_id = await conn.fetchval("SELECT nextval('imports_seq')")
-        try:
-            citizens_records = [
-                (generated_import_id, citizen.citizen_id, citizen.town, citizen.street, citizen.building,
-                 citizen.apartment, citizen.name,
-                 datetime.strptime(citizen.birth_date, "%d.%m.%Y"),
-                 citizen.gender)
-                for citizen in citizens
-            ]
-        except ValueError:
-            raise WrongDateFormatException("Date does not exist")
 
-        _ = await conn.copy_records_to_table(
-            table_name="citizens",
-            records=citizens_records,
-            columns=["import_id", "citizen_id", "town", "street", "building",
-                     "apartment", "name", "birth_date", "gender"],
-            schema_name="public"
-        )
+        citizens_records = [
+            (generated_import_id, citizen.citizen_id, citizen.town,
+             citizen.street, citizen.building, citizen.apartment,
+             citizen.name, datetime.strptime(citizen.birth_date, "%d.%m.%Y"), citizen.gender)
+            for citizen in citizens
+        ]
+
+        try:
+            _ = await conn.copy_records_to_table(
+                table_name="citizens",
+                records=citizens_records,
+                columns=["import_id", "citizen_id", "town", "street", "building",
+                         "apartment", "name", "birth_date", "gender"],
+                schema_name="public"
+            )
+        except UniqueViolationError:
+            raise HTTPException(status_code=HTTP_400_BAD_REQUEST,
+                                detail="Citizen id is not unique")
 
         citizen_relatives = []
         for citizen in citizens:
             for relative_id in citizen.relatives:
                 citizen_relatives.append((generated_import_id, citizen.citizen_id, relative_id))
 
-        _ = await conn.copy_records_to_table(
-            table_name="relatives",
-            records=citizen_relatives,
-            columns=["import_id", "citizen_id", "relative_id"],
-            schema_name="public"
-        )
+        try:
+            _ = await conn.copy_records_to_table(
+                table_name="relatives",
+                records=citizen_relatives,
+                columns=["import_id", "citizen_id", "relative_id"],
+                schema_name="public"
+            )
+        except UniqueViolationError:
+            raise HTTPException(status_code=HTTP_400_BAD_REQUEST,
+                                detail="Detected duplicated relative_id")
+        except ForeignKeyViolationError:
+            raise HTTPException(status_code=HTTP_400_BAD_REQUEST,
+                                detail="Detected nonexistent relative_id")
 
         return generated_import_id
 
@@ -81,6 +91,9 @@ async def get_citizen(conn: Connection, import_id: int, citizen_id: int) -> Citi
         citizen_id
     )
 
+    if citizen_row is None:
+        raise HTTPException(status_code=HTTP_400_BAD_REQUEST,
+                            detail=f"Citizen with id = {citizen_id} is not presented in import id: {import_id}")
     citizen = Citizen(
         citizen_id=citizen_id,
         town=citizen_row["town"],
@@ -124,14 +137,10 @@ async def update_citizens_data(
     citizen_from_db.name = citizen.name if citizen.name else citizen_from_db.name
     citizen_from_db.gender = citizen.gender if citizen.gender else citizen_from_db.gender
 
-    try:
-        citizen_from_db.birth_date = datetime.strptime(
-            citizen.birth_date,
-            "%d.%m.%Y"
-        ) if citizen.birth_date else datetime.strptime(citizen_from_db.birth_date, "%d.%m.%Y")
-    except ValueError:
-        raise WrongDateFormatException("Date does not exist")
-    print(citizen_from_db.birth_date)
+    citizen_from_db.birth_date = datetime.strptime(
+        citizen.birth_date,
+        "%d.%m.%Y"
+    ) if citizen.birth_date else datetime.strptime(citizen_from_db.birth_date, "%d.%m.%Y")
 
     async with conn.transaction():
 
@@ -180,16 +189,23 @@ async def update_citizens_data(
                         [(import_id, citizen_id, relative_id),
                          (import_id, relative_id, citizen_id)]
                     )
-                _ = await conn.copy_records_to_table(
-                    table_name="relatives",
-                    records=update_for_relatives,
-                    columns=["import_id", "citizen_id", "relative_id"],
-                    schema_name="public"
-                )
+
+                try:
+                    _ = await conn.copy_records_to_table(
+                        table_name="relatives",
+                        records=update_for_relatives,
+                        columns=["import_id", "citizen_id", "relative_id"],
+                        schema_name="public"
+                    )
+                except ForeignKeyViolationError:
+                    raise HTTPException(status_code=HTTP_400_BAD_REQUEST,
+                                        detail=f"Found nonexistent relative import id = {import_id}")
+                except UniqueViolationError:
+                    raise HTTPException(status_code=HTTP_400_BAD_REQUEST,
+                                        detail="Detected duplicated relative_id")
 
             citizen_from_db.relatives = citizen.relatives
         citizen_from_db.birth_date = citizen_from_db.birth_date.strftime("%d.%m.%Y")
-        print(citizen_from_db.birth_date)
 
         return citizen_from_db
 
@@ -222,6 +238,9 @@ async def get_citizens_data(conn: Connection, import_id: int) -> List[Citizen]:
         """,
         import_id
     )
+    if len(citizens_rows) == 0:
+        raise HTTPException(status_code=HTTP_400_BAD_REQUEST,
+                            detail=f"There is no data with import id = {import_id}")
     for citizen_row in citizens_rows:
         citizens.append(Citizen(
             citizen_id=citizen_row["citizen_id_"],
@@ -262,6 +281,9 @@ async def get_num_presents_by_citizen_per_month(conn: Connection, import_id: int
         import_id
     )
 
+    if len(num_presents_by_citizen_per_month_rows) == 0:
+        raise HTTPException(status_code=HTTP_400_BAD_REQUEST,
+                            detail=f"There is no data with import id = {import_id}")
     num_presents_by_citizen_per_month = defaultdict(list)
     for row in num_presents_by_citizen_per_month_rows:
         num_presents_by_citizen_per_month[row["month"]].append({row["citizen_id_"]: row["num_birthdays"]})
@@ -291,9 +313,12 @@ async def get_citizens_age_and_town(conn: Connection, import_id: int) -> List[Ag
         """,
         import_id
     )
+
+    if len(citizens_age_and_town) == 0:
+        raise HTTPException(status_code=HTTP_400_BAD_REQUEST,
+                            detail=f"There is no data with import id = {import_id}")
     ages_by_town = defaultdict(list)
     for age_as_string, town in citizens_age_and_town:
-        print(age_as_string, type(age_as_string))
         ages_by_town[town].append(int(age_as_string.split(" ")[0]))
 
     age_stats_by_town: List[AgeStatsByTown] = []

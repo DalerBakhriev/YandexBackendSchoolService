@@ -6,7 +6,6 @@ from starlette.responses import JSONResponse, PlainTextResponse
 from starlette.responses import RedirectResponse
 from starlette.status import HTTP_201_CREATED, HTTP_200_OK, HTTP_400_BAD_REQUEST
 
-from app.core.custom_exceptions import WrongDateFormatException
 from app.crud.citizen import (
     get_citizens_data,
     insert_citizens_data,
@@ -25,7 +24,6 @@ from app.models.citizen import (
     SomeCitizensInResponse
 )
 
-VALID_GENDERS = {"male", "female"}
 app = FastAPI()
 app.add_event_handler("startup", connect_to_postgres)
 app.add_event_handler("shutdown", close_postgres_connection)
@@ -50,27 +48,9 @@ async def import_citizens_data(
 
     citizens = citizens_to_import.citizens
 
-    # Валидация консистентности родственников
-    citizens_relatives = {citizen.citizen_id: set(citizen.relatives) for citizen in citizens}
-    for citizen_id in citizens_relatives:
-        for relative_id in citizens_relatives[citizen_id]:
-            if citizen_id not in citizens_relatives.get(relative_id, set()):
-                raise HTTPException(status_code=HTTP_400_BAD_REQUEST,
-                                    detail="Relatives data is inconsistent")
-
-    # Валидация на случай, если пол указан неверно
-    for citizen in citizens:
-        if citizen.gender not in VALID_GENDERS:
-            raise HTTPException(status_code=HTTP_400_BAD_REQUEST,
-                                detail="Gender is invalid")
-
     async with db.pool.acquire() as conn:
-        try:
-            gen_import_id = await insert_citizens_data(conn=conn, citizens=citizens)
-        except WrongDateFormatException:
-            raise HTTPException(status_code=HTTP_400_BAD_REQUEST,
-                                detail="Date does not exist")
 
+        gen_import_id = await insert_citizens_data(conn=conn, citizens=citizens)
         return JSONResponse(jsonable_encoder({"data": gen_import_id}),
                             status_code=HTTP_201_CREATED)
 
@@ -85,33 +65,22 @@ async def patch_citizens_data(
 ):
     # Валидируем, что хотя бы один параметр не пустой
     num_parameters_to_update = sum([
-        attr_value is not None
-        for attr_value in
-        map(lambda field: getattr(citizen, field), ["town", "street", "building", "apartment", "name",
-                                                    "birth_date", "gender", "relatives"])
+        param_value is not None for param_value in citizen.dict().values()
     ])
 
     if num_parameters_to_update == 0:
         raise HTTPException(status_code=HTTP_400_BAD_REQUEST,
                             detail="There are no parameters to update")
 
-    if citizen.gender is not None and citizen.gender not in VALID_GENDERS:
-        raise HTTPException(status_code=HTTP_400_BAD_REQUEST,
-                            detail="Gender is invalid")
-
     # TODO: Валидация на существующие citizen_id в списке родственников
     async with db.pool.acquire() as conn:
 
-        try:
-            updated_citizen: Citizen = await update_citizens_data(
-                conn=conn,
-                import_id=import_id,
-                citizen_id=citizen_id,
-                citizen=citizen
-            )
-        except WrongDateFormatException:
-            raise HTTPException(status_code=HTTP_400_BAD_REQUEST,
-                                detail="Date does not exist")
+        updated_citizen: Citizen = await update_citizens_data(
+            conn=conn,
+            import_id=import_id,
+            citizen_id=citizen_id,
+            citizen=citizen
+        )
 
         updated_citizen_for_response = CitizenInResponse(data=updated_citizen)
         return JSONResponse(jsonable_encoder(updated_citizen_for_response),
