@@ -1,9 +1,10 @@
+from typing import List
+
 from fastapi import Body, Depends, FastAPI, HTTPException, Path
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from starlette.requests import Request
 from starlette.responses import JSONResponse, PlainTextResponse
-from starlette.responses import RedirectResponse
 from starlette.status import HTTP_201_CREATED, HTTP_200_OK, HTTP_400_BAD_REQUEST
 
 from app.crud.citizen import (
@@ -16,6 +17,7 @@ from app.crud.citizen import (
 from app.db.database import get_database, DataBase
 from app.db.db_utils import connect_to_postgres, close_postgres_connection
 from app.models.citizen import (
+    AgeStatsByTown,
     AgeStatsByTownInResponse,
     Citizen,
     CitizensToImport,
@@ -24,7 +26,7 @@ from app.models.citizen import (
     SomeCitizensInResponse
 )
 
-app = FastAPI()
+app = FastAPI(docs_url="/")
 app.add_event_handler("startup", connect_to_postgres)
 app.add_event_handler("shutdown", close_postgres_connection)
 
@@ -32,11 +34,6 @@ app.add_event_handler("shutdown", close_postgres_connection)
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exception: Exception):
     return PlainTextResponse(str(exception), status_code=400)
-
-
-@app.get("/")
-def redirect_to_docs():
-    return RedirectResponse(url="/docs")
 
 
 @app.post("/imports")
@@ -50,8 +47,8 @@ async def import_citizens_data(
 
     async with db.pool.acquire() as conn:
 
-        gen_import_id = await insert_citizens_data(conn=conn, citizens=citizens)
-        return JSONResponse(jsonable_encoder({"data": gen_import_id}),
+        gen_import_id: int = await insert_citizens_data(conn=conn, citizens=citizens)
+        return JSONResponse(jsonable_encoder({"data": {"import_id": gen_import_id}}),
                             status_code=HTTP_201_CREATED)
 
 
@@ -72,7 +69,6 @@ async def patch_citizens_data(
         raise HTTPException(status_code=HTTP_400_BAD_REQUEST,
                             detail="There are no parameters to update")
 
-    # TODO: Валидация на существующие citizen_id в списке родственников
     async with db.pool.acquire() as conn:
 
         updated_citizen: Citizen = await update_citizens_data(
@@ -94,7 +90,7 @@ async def get_citizens(
         db: DataBase = Depends(get_database)
 ):
     async with db.pool.acquire() as conn:
-        citizens = await get_citizens_data(conn=conn, import_id=import_id)
+        citizens: List[Citizen] = await get_citizens_data(conn=conn, import_id=import_id)
 
         return JSONResponse(
             jsonable_encoder(SomeCitizensInResponse(data=citizens)),
@@ -123,7 +119,7 @@ async def get_citizens_age_stats(
         db: DataBase = Depends(get_database)
 ):
     async with db.pool.acquire() as conn:
-        age_stats_by_town = await get_citizens_age_and_town(conn=conn, import_id=import_id)
+        age_stats_by_town: List[AgeStatsByTown] = await get_citizens_age_and_town(conn=conn, import_id=import_id)
         age_stats_by_town_for_response = AgeStatsByTownInResponse(data=age_stats_by_town)
 
         return JSONResponse(jsonable_encoder(age_stats_by_town_for_response),

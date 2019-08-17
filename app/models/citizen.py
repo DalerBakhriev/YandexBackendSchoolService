@@ -34,7 +34,6 @@ class CitizensToImport(BaseModel):
 
     @validator("citizens", whole=True)
     def validate_relatives_consistency(cls, citizens_values: List[Citizen]):
-        print(citizens_values)
         citizens_relatives = {citizen.citizen_id: set(citizen.relatives) for citizen in citizens_values}
         for citizen_id in citizens_relatives:
             for relative_id in citizens_relatives[citizen_id]:
