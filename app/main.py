@@ -1,6 +1,7 @@
+import os
 from typing import List
 
-from fastapi import Body, Depends, FastAPI, HTTPException, Path
+from fastapi import Body, Depends, FastAPI, Header, HTTPException, Path
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from starlette.requests import Request
@@ -12,7 +13,8 @@ from app.crud.citizen import (
     insert_citizens_data,
     get_citizens_age_and_town,
     update_citizens_data,
-    get_num_presents_by_citizen_per_month
+    get_num_presents_by_citizen_per_month,
+    clear_db
 )
 from app.db.database import get_database, DataBase
 from app.db.db_utils import connect_to_postgres, close_postgres_connection
@@ -56,7 +58,7 @@ async def import_citizens_data(
 async def patch_citizens_data(
         *,
         import_id: int = Path(..., title="The ID of import to get", ge=1),
-        citizen_id: int = Path(..., title="Citizen id to patch info"),
+        citizen_id: int = Path(..., title="Citizen id to patch info", ge=0),
         citizen: CitizenToUpdate = Body(..., title="Citizen's data to update"),
         db: DataBase = Depends(get_database)
 ):
@@ -125,3 +127,17 @@ async def get_citizens_age_stats(
         return JSONResponse(jsonable_encoder(age_stats_by_town_for_response),
                             status_code=HTTP_200_OK)
 
+
+@app.post("/clear_db")
+async def clear_database(
+        *,
+        token: str = Header(...),
+        db: DataBase = Depends(get_database)
+):
+    if token == os.getenv("SECRET_TOKEN", ""):
+        async with db.pool.acquire() as conn:
+            await clear_db(conn=conn)
+            return JSONResponse(jsonable_encoder({"database_was_cleared": "ok"}))
+    else:
+        raise HTTPException(status_code=HTTP_400_BAD_REQUEST,
+                            detail="Wrong secret token")

@@ -1,9 +1,33 @@
+import os
 from datetime import datetime
 
 from dateutil.relativedelta import relativedelta
+from dotenv import load_dotenv
 from starlette.testclient import TestClient
 
 from app.main import app
+from tests.utils import TestConfig
+
+load_dotenv(os.path.join("..", ".env"))
+
+test_conf = TestConfig()
+
+
+def setup():
+    test_conf.SECRET_TOKEN = os.getenv("SECRET_TOKEN", "")
+    with TestClient(app) as client:
+        client.post(
+            "/clear_db",
+            headers={"token": f"{test_conf.SECRET_TOKEN}"}
+        )
+
+
+def teardown():
+    with TestClient(app) as client:
+        client.post(
+            "/clear_db",
+            headers={"token": f"{test_conf.SECRET_TOKEN}"}
+        )
 
 
 def test_import_inconsistent_relatives():

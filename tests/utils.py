@@ -3,6 +3,11 @@ from starlette.testclient import TestClient
 from app.main import app
 
 
+class TestConfig:
+    IMPORT_ID = None
+    SECRET_TOKEN = None
+
+
 def import_data_sample() -> int:
     """
     Imports test data sample

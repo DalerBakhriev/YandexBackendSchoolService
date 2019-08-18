@@ -3,6 +3,7 @@ from datetime import datetime
 from typing import Dict, List
 
 import numpy as np
+import pytz
 from asyncpg import Connection
 from asyncpg.exceptions import ForeignKeyViolationError, UniqueViolationError
 from starlette.exceptions import HTTPException
@@ -26,7 +27,7 @@ async def insert_citizens_data(conn: Connection, citizens: List[Citizen]) -> int
         citizens_records = [
             (generated_import_id, citizen.citizen_id, citizen.town,
              citizen.street, citizen.building, citizen.apartment,
-             citizen.name, datetime.strptime(citizen.birth_date, "%d.%m.%Y"), citizen.gender)
+             citizen.name, datetime.strptime(citizen.birth_date, "%d.%m.%Y").astimezone(pytz.utc), citizen.gender)
             for citizen in citizens
         ]
 
@@ -140,7 +141,9 @@ async def update_citizens_data(
     citizen_from_db.birth_date = datetime.strptime(
         citizen.birth_date,
         "%d.%m.%Y"
-    ) if citizen.birth_date else datetime.strptime(citizen_from_db.birth_date, "%d.%m.%Y")
+    ).astimezone(pytz.utc) if citizen.birth_date else datetime.strptime(
+        citizen_from_db.birth_date, "%d.%m.%Y"
+    ).astimezone(pytz.utc)
 
     async with conn.transaction():
 
@@ -307,7 +310,7 @@ async def get_citizens_age_and_town(conn: Connection, import_id: int) -> List[Ag
 
     citizens_age_and_town = await conn.fetch(
         """
-        SELECT age(birth_date)::varchar age, town
+        SELECT EXTRACT(YEAR from age(timezone('utc', now()), birth_date)) age, town
         FROM public.citizens
         WHERE import_id = $1
         """,
@@ -319,7 +322,7 @@ async def get_citizens_age_and_town(conn: Connection, import_id: int) -> List[Ag
                             detail=f"There is no data with import id = {import_id}")
     ages_by_town = defaultdict(list)
     for age_as_string, town in citizens_age_and_town:
-        ages_by_town[town].append(int(age_as_string.split(" ")[0]))
+        ages_by_town[town].append(int(age_as_string))
 
     age_stats_by_town: List[AgeStatsByTown] = []
 
@@ -334,3 +337,30 @@ async def get_citizens_age_and_town(conn: Connection, import_id: int) -> List[Ag
         )
 
     return age_stats_by_town
+
+
+async def clear_db(conn: Connection) -> None:
+    """
+    Clears database
+    :param conn: asyncpg connection
+    :return:
+    """
+    await conn.execute(
+        """
+        DELETE
+        FROM public.relatives
+        """
+    )
+
+    await conn.execute(
+        """
+        DELETE
+        FROM public.citizens
+        """
+    )
+
+    await conn.execute(
+        """
+        ALTER SEQUENCE imports_seq RESTART WITH 1;
+        """
+    )
