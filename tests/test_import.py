@@ -14,19 +14,22 @@ test_conf = TestConfig()
 
 
 def setup():
-    test_conf.SECRET_TOKEN = os.getenv("SECRET_TOKEN", "")
+    test_conf.ADMIN_LOGIN = os.getenv("ADMIN_LOGIN", "")
+    test_conf.ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "")
     with TestClient(app) as client:
-        client.post(
-            "/clear_db",
-            headers={"token": f"{test_conf.SECRET_TOKEN}"}
+        client.delete(
+            "/reset_data",
+            json={"admin_login": f"{test_conf.ADMIN_LOGIN}",
+                  "admin_password": f"{test_conf.ADMIN_PASSWORD}"}
         )
 
 
 def teardown():
     with TestClient(app) as client:
-        client.post(
-            "/clear_db",
-            headers={"token": f"{test_conf.SECRET_TOKEN}"}
+        client.delete(
+            "/reset_data",
+            json={"admin_login": f"{test_conf.ADMIN_LOGIN}",
+                  "admin_password": f"{test_conf.ADMIN_PASSWORD}"}
         )
 
 
@@ -232,6 +235,36 @@ def test_import_clean_data():
                      "relatives": []},
                 ]
             }
+        )
+        response_body = import_response.json()
+        assert import_response.status_code == 201
+        assert "data" in response_body
+        assert "import_id" in response_body["data"]
+        assert isinstance(response_body["data"]["import_id"], int)
+
+
+def test_import_swagger_example_is_ok():
+    """
+    Tests that swagger example for import is ok and works
+    Application should return 201 Created
+    :return:
+    """
+    with TestClient(app) as client:
+        import_response = client.post(
+            "/imports",
+            json={"citizens": [
+                {
+                    "citizen_id": 1,
+                    "town": "Москва",
+                    "street": "Бассейная",
+                    "building": "16к7стр5",
+                    "apartment": 666,
+                    "name": "Рассеяный",
+                    "birth_date": "23.11.2001",
+                    "gender": "male",
+                    "relatives": []
+                }
+            ]}
         )
         response_body = import_response.json()
         assert import_response.status_code == 201

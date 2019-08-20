@@ -11,7 +11,7 @@ if not DATABASE_URL:
     POSTGRES_NAME = os.getenv("POSTGRES_DB", "citizens_db")
 
     DATABASE_URL = DatabaseURL(
-        f"postgresql://{POSTGRES_USER}:{POSTGRES_PASS}@db/{POSTGRES_NAME}"
+        f"postgresql://{POSTGRES_USER}:{POSTGRES_PASS}@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_NAME}"
     )
 else:
     DATABASE_URL = DatabaseURL(DATABASE_URL)

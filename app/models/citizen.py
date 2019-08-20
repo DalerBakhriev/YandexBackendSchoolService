@@ -2,10 +2,11 @@ import re
 from datetime import datetime
 from typing import List, Optional
 
-from pydantic import BaseModel, validator
+from pydantic import BaseModel, validator, Extra
 
-MAX_GEO_PARAMETER_LENGTH = 256
-NUMBER_OR_LETTER = re.compile("\\w")
+MAX_STRING_PARAMETER_LENGTH = 256
+MIN_STRING_PARAMETER_LENGTH = 1
+NUMBER_OR_LETTER_PATTERN = re.compile("\\w")
 
 
 class Citizen(BaseModel):
@@ -20,6 +21,11 @@ class Citizen(BaseModel):
     gender: str
     relatives: List[int]
 
+    class Config:
+        extra = Extra.forbid
+        min_anystr_length = MIN_STRING_PARAMETER_LENGTH
+        max_anystr_length = MAX_STRING_PARAMETER_LENGTH
+
     @validator("citizen_id")
     def validate_citizen_id(cls, citizen_id: int):
 
@@ -30,13 +36,7 @@ class Citizen(BaseModel):
     @validator("town", "street", "building")
     def validate_parameter_name(cls, parameter_value: str):
 
-        if len(parameter_value) < 1:
-            raise ValueError("Value is empty")
-
-        if len(parameter_value) > MAX_GEO_PARAMETER_LENGTH:
-            raise ValueError("Value is too large")
-
-        numbers_or_letters = re.findall(NUMBER_OR_LETTER, parameter_value)
+        numbers_or_letters = re.findall(NUMBER_OR_LETTER_PATTERN, parameter_value)
         if len(numbers_or_letters) < 1:
             raise ValueError("Number of numbers or letters is invalid")
 
@@ -63,20 +63,12 @@ class Citizen(BaseModel):
             raise ValueError("Apartment number must be positive")
         return apartment_num
 
-    @validator("name")
-    def validate_name_length(cls, name_value: str):
-
-        if len(name_value) < 1:
-            raise ValueError("Name value is empty")
-
-        if len(name_value) > MAX_GEO_PARAMETER_LENGTH:
-            raise ValueError("Name value is too large")
-
-        return name_value
-
 
 class CitizensToImport(BaseModel):
     citizens: List[Citizen]
+
+    class Config:
+        extra = Extra.forbid
 
     @validator("citizens", whole=True)
     def validate_relatives_consistency(cls, citizens_values: List[Citizen]):
@@ -103,17 +95,17 @@ class CitizenToUpdate(BaseModel):
     gender: Optional[str] = None
     relatives: Optional[List[int]] = None
 
+    class Config:
+        extra = Extra.forbid
+        min_anystr_length = MIN_STRING_PARAMETER_LENGTH
+        max_anystr_length = MAX_STRING_PARAMETER_LENGTH
+
     @validator("town", "street", "building")
     def validate_parameter_name(cls, parameter_value: str):
 
         if parameter_value is not None:
-            if len(parameter_value) < 1:
-                raise ValueError("Value is empty")
 
-            if len(parameter_value) > MAX_GEO_PARAMETER_LENGTH:
-                raise ValueError("Value is too large")
-
-            numbers_or_letters = re.findall(NUMBER_OR_LETTER, parameter_value)
+            numbers_or_letters = re.findall(NUMBER_OR_LETTER_PATTERN, parameter_value)
             if len(numbers_or_letters) < 1:
                 raise ValueError("Number of numbers or letters is invalid")
 
@@ -149,10 +141,19 @@ class SomeCitizensInResponse(BaseModel):
 class AgeStatsByTown(BaseModel):
 
     town: str
-    p50: int
-    p75: int
-    p99: int
+    p50: float
+    p75: float
+    p99: float
 
 
 class AgeStatsByTownInResponse(BaseModel):
     data: List[AgeStatsByTown]
+
+
+class AdminCredentials(BaseModel):
+
+    admin_login: str
+    admin_password: str
+
+    class Config:
+        extra = Extra.forbid

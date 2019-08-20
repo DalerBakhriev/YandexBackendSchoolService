@@ -10,4 +10,4 @@ ENV PYTHONPATH /usr/src/
 
 # Install dependencies
 RUN pip install -r /usr/src/requirements.txt
-CMD uvicorn app.main:app --host 0.0.0.0  --port 8080  --loop uvloop --workers 4
+CMD gunicorn app.main:app -w 6 -k uvicorn.workers.UvicornWorker -b 0.0.0.0:8080

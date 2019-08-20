@@ -1,7 +1,7 @@
 version: '3.7'
 
 services:
-  db:
+  postgres:
     image: postgres:10.1-alpine
     build:
       context: db_init
@@ -10,7 +10,7 @@ services:
       - postgres_data:/var/lib/postgresql/data/
     env_file:
       - .env
-    container_name: db
+    container_name: postgres
     ports:
       - 5432:5432
     restart: always
@@ -26,7 +26,7 @@ services:
       - 8080:8080
     tty: true
     depends_on:
-      - db
+      - postgres
     restart: always
 
 volumes:

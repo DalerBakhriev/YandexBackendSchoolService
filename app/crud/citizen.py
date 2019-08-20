@@ -3,7 +3,6 @@ from datetime import datetime
 from typing import Dict, List
 
 import numpy as np
-import pytz
 from asyncpg import Connection
 from asyncpg.exceptions import ForeignKeyViolationError, UniqueViolationError
 from starlette.exceptions import HTTPException
@@ -27,7 +26,7 @@ async def insert_citizens_data(conn: Connection, citizens: List[Citizen]) -> int
         citizens_records = [
             (generated_import_id, citizen.citizen_id, citizen.town,
              citizen.street, citizen.building, citizen.apartment,
-             citizen.name, datetime.strptime(citizen.birth_date, "%d.%m.%Y").astimezone(pytz.utc), citizen.gender)
+             citizen.name, datetime.strptime(citizen.birth_date, "%d.%m.%Y"), citizen.gender)
             for citizen in citizens
         ]
 
@@ -141,9 +140,7 @@ async def update_citizens_data(
     citizen_from_db.birth_date = datetime.strptime(
         citizen.birth_date,
         "%d.%m.%Y"
-    ).astimezone(pytz.utc) if citizen.birth_date else datetime.strptime(
-        citizen_from_db.birth_date, "%d.%m.%Y"
-    ).astimezone(pytz.utc)
+    ) if citizen.birth_date else datetime.strptime(citizen_from_db.birth_date, "%d.%m.%Y")
 
     async with conn.transaction():
 
@@ -262,7 +259,7 @@ async def get_citizens_data(conn: Connection, import_id: int) -> List[Citizen]:
 
 async def get_num_presents_by_citizen_per_month(conn: Connection, import_id: int) -> Dict[int, List[Dict[int, int]]]:
     """
-    Вовзарщает жителей и количество подарков, которые они должны покупать помесячно
+    Возвращает жителей и количество подарков, которые они должны покупать помесячно
     :param conn: asyncpg connection
     :param import_id: id of upload from provider
     :return: number of presents for every user per month
@@ -289,7 +286,10 @@ async def get_num_presents_by_citizen_per_month(conn: Connection, import_id: int
                             detail=f"There is no data with import id = {import_id}")
     num_presents_by_citizen_per_month = defaultdict(list)
     for row in num_presents_by_citizen_per_month_rows:
-        num_presents_by_citizen_per_month[row["month"]].append({row["citizen_id_"]: row["num_birthdays"]})
+        num_presents_by_citizen_per_month[row["month"]].append(
+            {"citizen_id": row["citizen_id_"],
+             "presents": row["num_birthdays"]}
+        )
 
     num_presents_by_citizen_per_month = dict(num_presents_by_citizen_per_month)
     for month_num in range(1, 12 + 1):
@@ -330,9 +330,9 @@ async def get_citizens_age_and_town(conn: Connection, import_id: int) -> List[Ag
         age_stats_by_town.append(
             AgeStatsByTown(
                 town=town,
-                p50=np.percentile(ages_by_town[town], q=50, interpolation="linear"),
-                p75=np.percentile(ages_by_town[town], q=75, interpolation="linear"),
-                p99=np.percentile(ages_by_town[town], q=99, interpolation="linear")
+                p50=round(np.percentile(ages_by_town[town], q=50, interpolation="linear"), 2),
+                p75=round(np.percentile(ages_by_town[town], q=75, interpolation="linear"), 2),
+                p99=round(np.percentile(ages_by_town[town], q=99, interpolation="linear"), 2)
             )
         )
 
@@ -341,26 +341,29 @@ async def get_citizens_age_and_town(conn: Connection, import_id: int) -> List[Ag
 
 async def clear_db(conn: Connection) -> None:
     """
-    Clears database
+    Clears database and resets sequence counter for import_id to 1
     :param conn: asyncpg connection
     :return:
     """
-    await conn.execute(
-        """
-        DELETE
-        FROM public.relatives
-        """
-    )
 
-    await conn.execute(
-        """
-        DELETE
-        FROM public.citizens
-        """
-    )
+    async with conn.transaction():
 
-    await conn.execute(
-        """
-        ALTER SEQUENCE imports_seq RESTART WITH 1;
-        """
-    )
+        await conn.execute(
+            """
+            DELETE
+            FROM public.relatives
+            """
+        )
+
+        await conn.execute(
+            """
+            DELETE
+            FROM public.citizens
+            """
+        )
+
+        await conn.execute(
+            """
+            ALTER SEQUENCE imports_seq RESTART WITH 1;
+            """
+        )

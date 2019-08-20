@@ -13,20 +13,21 @@ test_conf = TestConfig()
 
 
 def setup():
-    test_conf.SECRET_TOKEN = os.getenv("SECRET_TOKEN", "")
     with TestClient(app) as client:
-        client.post(
-            "/clear_db",
-            headers={"token": f"{test_conf.SECRET_TOKEN}"}
+        client.delete(
+            "/reset_data",
+            json={"admin_login": f"{test_conf.ADMIN_LOGIN}",
+                  "admin_password": f"{test_conf.ADMIN_PASSWORD}"}
         )
     test_conf.IMPORT_ID = import_data_sample()
 
 
 def teardown():
     with TestClient(app) as client:
-        client.post(
-            "/clear_db",
-            headers={"token": f"{test_conf.SECRET_TOKEN}"}
+        client.delete(
+            "/reset_data",
+            json={"admin_login": f"{test_conf.ADMIN_LOGIN}",
+                  "admin_password": f"{test_conf.ADMIN_PASSWORD}"}
         )
 
 
@@ -118,7 +119,7 @@ def test_patch_future_birth_date():
     """
 
     with TestClient(app) as client:
-        _curr_date = datetime.now()
+        _curr_date = datetime.utcnow()
         _later_date = _curr_date + relativedelta(days=1)
         later_date = _later_date.strftime("%d.%m.%Y")
 

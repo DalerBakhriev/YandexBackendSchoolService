@@ -1,3 +1,5 @@
+import os
+
 from starlette.testclient import TestClient
 
 from app.main import app
@@ -5,7 +7,8 @@ from app.main import app
 
 class TestConfig:
     IMPORT_ID = None
-    SECRET_TOKEN = None
+    ADMIN_LOGIN = os.getenv("ADMIN_LOGIN", "")
+    ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "")
 
 
 def import_data_sample() -> int:
