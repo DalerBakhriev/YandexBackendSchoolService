@@ -6,6 +6,7 @@ from app.main import app
 
 
 class TestConfig:
+
     IMPORT_ID = None
     ADMIN_LOGIN = os.getenv("ADMIN_LOGIN", "")
     ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "")

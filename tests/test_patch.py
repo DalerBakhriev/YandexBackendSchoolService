@@ -1,18 +1,16 @@
-import os
 from datetime import datetime
 
 from dateutil.relativedelta import relativedelta
-from dotenv import load_dotenv
 from starlette.testclient import TestClient
 
 from app.main import app
 from tests.utils import import_data_sample, TestConfig
 
-load_dotenv(os.path.join("..", ".env"))
 test_conf = TestConfig()
 
 
 def setup():
+
     with TestClient(app) as client:
         client.delete(
             "/reset_data",
@@ -23,6 +21,7 @@ def setup():
 
 
 def teardown():
+
     with TestClient(app) as client:
         client.delete(
             "/reset_data",

@@ -185,10 +185,14 @@ async def update_citizens_data(
                 update_for_relatives = []
 
                 for relative_id in citizen.relatives:
-                    update_for_relatives.extend(
-                        [(import_id, citizen_id, relative_id),
-                         (import_id, relative_id, citizen_id)]
-                    )
+
+                    if relative_id == citizen_id:
+                        update_for_relatives.append((import_id, citizen_id, relative_id))
+                    else:
+                        update_for_relatives.extend(
+                            [(import_id, citizen_id, relative_id),
+                             (import_id, relative_id, citizen_id)]
+                        )
 
                 try:
                     _ = await conn.copy_records_to_table(
