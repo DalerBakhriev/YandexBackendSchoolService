@@ -42,7 +42,7 @@ async def insert_citizens_data(conn: Connection, citizens: List[Citizen]) -> int
             raise HTTPException(status_code=HTTP_400_BAD_REQUEST,
                                 detail="Citizen id is not unique")
 
-        citizen_relatives = []
+        citizen_relatives = list()
         for citizen in citizens:
             for relative_id in citizen.relatives:
                 citizen_relatives.append((generated_import_id, citizen.citizen_id, relative_id))
@@ -182,7 +182,7 @@ async def update_citizens_data(
             )
 
             if citizen.relatives:
-                update_for_relatives = []
+                update_for_relatives = list()
 
                 for relative_id in citizen.relatives:
 
@@ -223,7 +223,7 @@ async def get_citizens_data(conn: Connection, import_id: int) -> List[Citizen]:
     :return: Citizens data with chosen import_id
     """
 
-    citizens: List[Citizen] = []
+    citizens: List[Citizen] = list()
     citizens_rows = await conn.fetch(
         """
         SELECT citizens.citizen_id AS citizen_id_,
@@ -279,7 +279,6 @@ async def get_num_presents_by_citizen_per_month(conn: Connection, import_id: int
             FROM public.citizens citizens LEFT JOIN public.relatives relatives
             ON citizens.citizen_id = relatives.citizen_id AND citizens.import_id = relatives.import_id
             WHERE citizens.import_id = $1) subquery
-        WHERE citizen_id_ is NOT NULL
         GROUP BY citizen_id_, month
         """,
         import_id
@@ -288,17 +287,19 @@ async def get_num_presents_by_citizen_per_month(conn: Connection, import_id: int
     if len(num_presents_by_citizen_per_month_rows) == 0:
         raise HTTPException(status_code=HTTP_400_BAD_REQUEST,
                             detail=f"There is no data with import id = {import_id}")
+
     num_presents_by_citizen_per_month = defaultdict(list)
     for row in num_presents_by_citizen_per_month_rows:
-        num_presents_by_citizen_per_month[row["month"]].append(
-            {"citizen_id": row["citizen_id_"],
-             "presents": row["num_birthdays"]}
-        )
+        if row["citizen_id_"] is not None:
+            num_presents_by_citizen_per_month[str(row["month"])].append(
+                {"citizen_id": row["citizen_id_"],
+                 "presents": row["num_birthdays"]}
+            )
 
     num_presents_by_citizen_per_month = dict(num_presents_by_citizen_per_month)
-    for month_num in range(1, 12 + 1):
+    for month_num in map(str, range(1, 12 + 1)):
         if month_num not in num_presents_by_citizen_per_month:
-            num_presents_by_citizen_per_month[month_num] = []
+            num_presents_by_citizen_per_month[month_num] = list()
 
     return num_presents_by_citizen_per_month
 
@@ -328,15 +329,15 @@ async def get_citizens_age_and_town(conn: Connection, import_id: int) -> List[Ag
     for age_as_string, town in citizens_age_and_town:
         ages_by_town[town].append(int(age_as_string))
 
-    age_stats_by_town: List[AgeStatsByTown] = []
+    age_stats_by_town: List[AgeStatsByTown] = list()
 
     for town in ages_by_town:
         age_stats_by_town.append(
             AgeStatsByTown(
                 town=town,
-                p50=round(np.percentile(ages_by_town[town], q=50, interpolation="linear"), 2),
-                p75=round(np.percentile(ages_by_town[town], q=75, interpolation="linear"), 2),
-                p99=round(np.percentile(ages_by_town[town], q=99, interpolation="linear"), 2)
+                p50=float(round(np.percentile(ages_by_town[town], q=50, interpolation="linear"), 2)),
+                p75=float(round(np.percentile(ages_by_town[town], q=75, interpolation="linear"), 2)),
+                p99=float(round(np.percentile(ages_by_town[town], q=99, interpolation="linear"), 2))
             )
         )
 

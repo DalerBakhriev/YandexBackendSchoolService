@@ -17,8 +17,8 @@ else:
     DATABASE_URL = DatabaseURL(DATABASE_URL)
 
 
-MAX_CONNECTIONS_COUNT = int(os.getenv("MAX_CONNECTIONS_COUNT", 10))
-MIN_CONNECTIONS_COUNT = int(os.getenv("MIN_CONNECTIONS_COUNT", 7))
+MAX_CONNECTIONS_COUNT = int(os.getenv("MAX_CONNECTIONS_COUNT", 7))
+MIN_CONNECTIONS_COUNT = int(os.getenv("MIN_CONNECTIONS_COUNT", 5))
 
 # Queries and responses examples for documentation
 IMPORT_ENDPOINT_QUERY_BODY_EXAMPLE = {"citizens": [

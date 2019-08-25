@@ -10,4 +10,4 @@ ENV PYTHONPATH /usr/src/
 
 # Install dependencies
 RUN pip install -r /usr/src/requirements.txt
-CMD gunicorn app.main:app -w 6 -k uvicorn.workers.UvicornWorker -b 0.0.0.0:8080
+CMD gunicorn app.main:app -w 4 -k uvicorn.workers.UvicornWorker -b 0.0.0.0:8080

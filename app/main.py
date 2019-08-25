@@ -201,7 +201,7 @@ async def get_citizens(
 async def get_citizens_and_num_presents(
         import_id: int = Path(
             ...,
-            title="The ID of import to session get num presents from",
+            title="The ID of import session to get num presents from",
             ge=1,
             description=IMPORT_ID_DESCRIPTION
         ),
