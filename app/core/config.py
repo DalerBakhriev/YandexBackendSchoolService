@@ -6,8 +6,8 @@ DATABASE_URL = os.getenv("DATABASE_URL", "")
 if not DATABASE_URL:
     POSTGRES_HOST = os.getenv("POSTGRES_HOST", "localhost")
     POSTGRES_PORT = int(os.getenv("POSTGRES_PORT", 5432))
-    POSTGRES_USER = os.getenv("POSTGRES_USER", "daler")
-    POSTGRES_PASS = os.getenv("POSTGRES_PASSWORD", "daler")
+    POSTGRES_USER = os.getenv("POSTGRES_USER", "user")
+    POSTGRES_PASS = os.getenv("POSTGRES_PASSWORD", "password")
     POSTGRES_NAME = os.getenv("POSTGRES_DB", "citizens_db")
 
     DATABASE_URL = DatabaseURL(
