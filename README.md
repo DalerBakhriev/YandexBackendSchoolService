@@ -26,3 +26,11 @@ Run application with docker-compose:
 ```sh
 docker-compose up
 ```
+
+### Tests
+
+Run tests:
+
+```sh
+docker exec -it yaback_service pytest /usr/src
+```
