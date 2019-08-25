@@ -135,12 +135,12 @@ async def patch_citizens_data(
     - **relatives**: list of person's relatives' citizen ids (if A is B's relative then B is A's relative)
     """
 
-    # Валидируем, что в запросе не было значений null
+    # Validate that request does not contain null values
     if None in citizen.dict(skip_defaults=True).values():
         raise HTTPException(status_code=HTTP_400_BAD_REQUEST,
                             detail="Null values are not allowed")
 
-    # Валидируем, что хотя бы один параметр не пустой
+    # Validate that at least one parameter is not empty
     num_parameters_to_update = sum([
         param_value is not None for param_value in citizen.dict().values()
     ])

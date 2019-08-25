@@ -129,7 +129,7 @@ async def update_citizens_data(
         citizen_id=citizen_id
     )
 
-    # Обновление основной информации о жителях
+    # Update basic citizens information
     citizen_from_db.town = citizen.town if citizen.town else citizen_from_db.town
     citizen_from_db.street = citizen.street if citizen.street else citizen_from_db.street
     citizen_from_db.building = citizen.building if citizen.building else citizen_from_db.building
@@ -167,7 +167,7 @@ async def update_citizens_data(
             citizen_id
         )
 
-        # Обновление информации о родственниках
+        # Relative information update
         if citizen.relatives is not None:
             await conn.execute(
                 """
