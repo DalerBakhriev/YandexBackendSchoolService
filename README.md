@@ -34,3 +34,5 @@ Run tests:
 ```sh
 docker exec -it yaback_service pytest /usr/src
 ```
+
+Warning! Database will be cleared while running tests.
